@@ -1,0 +1,29 @@
+{
+  "name": "open-health",
+  "version": "0.1.0",
+  "description": "Family health tracker — daily weight, weekly vitals, and LLM-drafted weekly menus on Cloudflare Workers",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DaleXiao/open-health.git"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply health_db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply health_db --remote",
+    "test": "bash scripts/grep-no-minute-cron.sh && bash scripts/grep-no-live-llm.sh && node --test --experimental-strip-types test/unit.test.ts test/mobile-responsive.test.ts test/settings.test.ts test/security-headers.test.ts"
+  },
+  "dependencies": {
+    "@cf-wasm/photon": "^0.3.5",
+    "hono": "^4.13.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251101.0",
+    "@types/node": "^25.6.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.95.0"
+  }
+}
