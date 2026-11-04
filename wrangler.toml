@@ -1,0 +1,77 @@
+name = "open-health"
+main = "src/index.tsx"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+# Static assets served by Workers (replaces CF Pages for this app — single deploy).
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Uncomment and set your own domain (or use the *.workers.dev subdomain by
+# setting workers_dev = true above).
+# [[routes]]
+# pattern = "health.example.com"
+# custom_domain = true
+
+# Menu images are persisted as webp blobs in D1 (fetched from the temporary
+# image-generation URL and compressed); no R2 binding needed.
+
+# Optional: service binding to your LLM gateway worker.
+# Same account + same zone Worker→Worker fetch via public URL can return 522 in
+# tens of ms (CF edge short-circuits the fan-out subrequest). A binding bypasses
+# the public edge entirely and routes inside CF's runtime.
+#
+# When the binding is absent (wrangler dev / npm test / self-hosting without a
+# gateway worker), menu-gen.ts automatically falls back to
+# globalThis.fetch(LLM_GATEWAY_URL). To exercise the binding locally, add a
+# matching `[dev.services]` block.
+# [[services]]
+# binding = "API_LLM"
+# service = "your-llm-gateway-worker"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "health_db"
+# Create your own database with `wrangler d1 create health_db` and paste its id here.
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Secrets to set with `wrangler secret put`:
+#   SESSION_SECRET           -- 32+ byte random for HMAC cookies
+#   DASHSCOPE_API_KEY        -- API key for the menu LLM / image generation
+#   ADMIN_BOOTSTRAP_USERNAME -- initial admin (only used if users table is empty)
+#   ADMIN_BOOTSTRAP_PASSWORD -- initial admin password
+
+# Cron triggers:
+#   • "0 17 * * *"   = UTC 17:00 = Melbourne local 03:00 (DEFAULT_TZ)
+#       → nightlyPrefillGuard: single LLM window per day. Scans seeded
+#         users × {currentIso, nextIso}, calls prefillPoolWeek slice on each.
+#       → processAwaitingFirstSeeds + scheduledWeeklyRenewTzAware also fire
+#         here (no per-minute resolution needed; the weekly renew check is
+#         satisfied by the 03:00 tick + on-shuffle enqueue).
+#   • "*/10 * * * *" = every 10 min — drainPrefillQueue.
+#       → No-op when prefill_queue is empty (cheap SELECT LIMIT 1). Only
+#         consumes LLM tokens when (nightlyPrefillGuard partial) or
+#         (shuffleMealJob exhausted a pool) has enqueued continuation work.
+#       → Per-day bound: LLM calls ≤ users × 28 × 2 weeks ÷ slice +
+#         on-demand shuffle refills. Strictly bounded; no idle scanning.
+#
+# Hard rule (scripts/grep-no-minute-cron.sh, CI-enforced): the literal
+# every-minute trigger "* * * * *" must NEVER appear in this file. The
+# per-minute cron-drain pattern is gone for good.
+[triggers]
+crons = ["0 17 * * *", "*/10 * * * *"]
+
+[vars]
+LLM_MODEL = "qwen3.7-max"
+IMAGE_MODEL = "wan2.7-image-pro"
+DEFAULT_TZ = "Australia/Melbourne"
+# All LLM/image calls go through an OpenAI-compatible gateway URL.
+# Replace with your own gateway (see README → Self-hosting).
+LLM_GATEWAY_URL = "https://your-llm-gateway.example.com"
+# The CF Worker → far-away LLM endpoint link can be unstable; 90s is too low
+# for image generation. Stored as string per wrangler vars convention;
+# menu-gen.ts parses to int.
+LLM_TIMEOUT_MS = "120000"
